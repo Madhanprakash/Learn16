@@ -1,0 +1,106 @@
+{
+  "name": "Unread Email Digest",
+  "nodes": [
+    {
+      "id": "aa1686b1-51c6-498a-ae49-540a2d201a8a",
+      "name": "Run Digest",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "ab6c8319-8b0d-4b74-abed-d535d3909648",
+      "name": "Get 5 Unread Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [220, 0],
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 5,
+        "simple": false,
+        "filters": { "readStatus": "unread" },
+        "options": {}
+      },
+      "webhookId": "d2c8e435-5333-4772-99d7-017bc05d49d2",
+      "credentials": {
+        "gmailOAuth2": { "id": "GQ4s6q1VOvut2Ref", "name": "Gmail account New" }
+      }
+    },
+    {
+      "id": "2c919a5c-acba-4421-a59c-2204e2a6d534",
+      "name": "Summarise Email",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [440, 0],
+      "parameters": {
+        "promptType": "define",
+        "text": "=From: {{ $json.from?.text || \"unknown\" }}\nSubject: {{ $json.subject || \"(no subject)\" }}\n\n{{ ($json.text || $json.snippet || \"\").slice(0, 4000) }}",
+        "options": {
+          "systemMessage": "You summarise a single email. Reply with exactly one line of plain text, 20 words maximum. Start with the sender name, then a colon, then the key point or action needed. No greeting, no heading, no bullet, no quotes, no line breaks."
+        }
+      }
+    },
+    {
+      "id": "922d7eb7-aa35-4ca5-a735-ac70091219c2",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [440, 220],
+      "parameters": {
+        "model": { "__rl": true, "mode": "list", "value": "gpt-5-mini", "cachedResultName": "gpt-5-mini" },
+        "options": { "reasoningEffort": "low" }
+      },
+      "credentials": {
+        "openAiApi": { "id": "M4nJR8BgUm2HP2cy", "name": "OpenAI account" }
+      }
+    },
+    {
+      "id": "354941af-8263-4c97-8253-6034b006faaf",
+      "name": "Combine Summaries",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [700, 0],
+      "parameters": {
+        "aggregate": "aggregateIndividualFields",
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            { "fieldToAggregate": "output", "renameField": true, "outputFieldName": "summaries" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "10b5f291-5a45-459c-8e26-fbd0f36e886d",
+      "name": "Send Digest To Me",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [920, 0],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "smadhanprakash@gmail.com",
+        "subject": "=Unread Email Digest - {{ $now.toFormat(\"dd LLL yyyy, HH:mm\") }}",
+        "emailType": "text",
+        "message": "={{ $json.summaries.map(s => s.replace(/\\s*\\n+\\s*/g, \" \").trim()).join(\"\\n\") }}",
+        "options": { "appendAttribution": false }
+      },
+      "webhookId": "9fa6d4ca-09f1-4908-9a87-1e46b2d49f8c",
+      "credentials": {
+        "gmailOAuth2": { "id": "GQ4s6q1VOvut2Ref", "name": "Gmail account New" }
+      }
+    }
+  ],
+  "connections": {
+    "Run Digest": { "main": [[{ "node": "Get 5 Unread Emails", "type": "main", "index": 0 }]] },
+    "Get 5 Unread Emails": { "main": [[{ "node": "Summarise Email", "type": "main", "index": 0 }]] },
+    "Summarise Email": { "main": [[{ "node": "Combine Summaries", "type": "main", "index": 0 }]] },
+    "OpenAI Chat Model": { "ai_languageModel": [[{ "node": "Summarise Email", "type": "ai_languageModel", "index": 0 }]] },
+    "Combine Summaries": { "main": [[{ "node": "Send Digest To Me", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
